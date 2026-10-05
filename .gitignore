@@ -1,0 +1,16 @@
+.venv/
+.deps/
+.ci-idf/
+__pycache__/
+**/__pycache__/
+*.pyc
+*.log
+*.bin
+*.elf
+*.map
+*.zip
+**/sdkconfig
+**/sdkconfig.old
+**/build/
+**/managed_components/
+.env*

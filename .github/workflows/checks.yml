@@ -1,0 +1,18 @@
+name: Muse app checks
+on: [push, pull_request, workflow_dispatch]
+permissions:
+  contents: read
+jobs:
+  scope-and-host:
+    runs-on: ubuntu-latest
+    env:
+      IDF_PATH: ${{ github.workspace }}/.ci-idf
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          repository: DaveGamble/cJSON
+          ref: c859b25da02955fef659d658b8f324b5cde87be3
+          path: .ci-idf/components/json/cJSON
+      - run: python3 tools/check_scope.py
+      - run: bash tools/test-host.sh
