@@ -6,7 +6,7 @@
 
 - `device/components/passport_muse/`：配对、授权、HTTP CONNECT、实时通信、录音提交、回复同步和资源生命周期。
 - `device/components/noise_core/`：上游 Noise 实现及本地 ESP-IDF 组件声明。
-- `device/main/apps/muse/`：单个 Muse 应用的界面和按键业务，以及原创角色帧。
+- `device/main/apps/muse/`：单个 Muse 应用的界面和按键业务、角色帧接口，以及原创几何回退素材。
 - `device/tests/`：聊天协议/故障注入、音频 WAV/base64/UTF-8 与可选加密回归测试。
 
 生产代码对应 ESP-IDF 5.5.3、LVGL 9.5；SDK 来源 commit 和修改说明保留在组件 NOTICE 中。自己移植时需审查内存预算、生命周期和许可证，不能把 PC host 测试当作设备验收。
@@ -41,6 +41,6 @@ IDF_PATH="$PWD/.deps/idf" bash tools/test-host.sh
 
 这些是接入责任说明，不是已实现的独立宿主。共享字体、设置网页、驱动和其他应用不会为了消除编译依赖而自动加入开源范围。
 
-## 原创角色
+## 角色素材
 
-`tools/generate_avatar.py` 使用 Pillow 生成本项目原创几何机器人。执行会覆盖对应生成帧，请先提交或备份自己的改动。官方 Jollybot 美术未收录。
+`tools/generate_avatar.py` 使用 Pillow 生成本项目原创几何机器人。执行会覆盖对应生成帧，请先提交或备份自己的改动。GitHub 源码包未收录官方 Jollybot 美术；官网固件中的 Jollybot 编译帧由发布方依据单独取得的公开分发权限提供，不属于本仓库 MIT 许可证范围。

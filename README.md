@@ -2,6 +2,8 @@
 
 在 AI Passport 上按住上键说话、松开发送，并查看 Muse 的文字回复。需要自己的 Muse 账号、SDK Token、手机配对，以及设备可用的网络。
 
+官网 `0.2.0-rc.7` 固件使用官方 Jollybot 形象，并由固件发布方依据单独取得的公开分发权限提供。Jollybot 不属于本仓库的 MIT 许可范围；本应用源码仓库继续提供接口兼容的原创几何角色作为可自由再分发的开发回退素材。
+
 **本仓库只开源 Muse 功能，不包含整机源码、其他应用或预编译整机固件。** 普通用户从 [FoloToy 口袋百宝箱玩法页面](https://ai-passport.folotoy.cn/plays/438/) 安装包含 Muse 的固件，再按本仓库教程配置即可；无需编程、VB-CABLE 或微信输入法。
 
 官网维护者尚未上传含 Muse 的版本时，请等待页面更新。GitHub 发布项目不代表官网固件已经更新，Source code ZIP 不能刷机。
@@ -30,7 +32,7 @@
 
 | 目录 | 内容 |
 | --- | --- |
-| `device/main/apps/muse/` | Muse 应用界面、按键业务与原创几何机器人 |
+| `device/main/apps/muse/` | Muse 应用界面、按键业务、角色帧接口与原创几何回退素材 |
 | `device/components/passport_muse/` | Muse 生命周期、音频发送、配对、网络代理及 SDK 适配 |
 | `device/components/noise_core/` | 本功能所需的上游 Noise 协议代码，保留 Apache-2.0 声明 |
 | `device/tests/` | Muse 语音与会话协议测试 |
