@@ -13,7 +13,7 @@
 1. 同款 FoloToy AI Passport（ESP32-C3 / 8 MB / ES8311）先按 [固件说明](docs/FIRMWARE.zh-CN.md) 安装官网固件。已有同版 Muse 则跳过。
 2. 在 [Muse Gadget 官方网站](https://gadgets.muse.ai/) 申请自己的 SDK Token，并准备已登录的手机 Muse。账号资格以官方为准。
 3. 设备首页长按下键进入手机设置，手机连设备热点，打开屏幕地址（通常 `192.168.4.1`），填写 2.4 GHz Wi-Fi 和本人 Token。
-4. 设备不能直连时，按 [网络与代理教程](docs/NETWORK.zh-CN.md) 设置自己的电脑 IPv4、HTTP/混合代理端口。不要填作者地址、SOCKS-only 或管理端口。
+4. 第一次先将代理留空；只有设备不能直连时，才按 [Wi-Fi 与电脑代理教程](docs/NETWORK.zh-CN.md) 逐步打开 Allow LAN、查找 Windows 局域网 IPv4、确认 HTTP/混合端口并测试连通性。不要填作者地址、`127.0.0.1`、虚拟网卡 IP、SOCKS-only 或管理端口。
 5. 完成设置后退出设备热点，打开设备 Muse；在手机 Muse 开发者模式中添加设备，并按硬件确定键确认。
 6. 等待“我准备好了”，按住上键说话、松开，等待文字回复后再发下一段。
 
