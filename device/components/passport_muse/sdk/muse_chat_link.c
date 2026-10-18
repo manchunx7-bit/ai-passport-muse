@@ -879,11 +879,12 @@ const char *muse_hatch_state_name(muse_hatch_state_t state)
 
 bool muse_hatch_ready(void)
 {
-    return s_events && muse_link_hatch_linked() && muse_wifi_connected() && muse_link_req_ready();
+    return muse_hatch_initialized() && muse_link_hatch_linked() && muse_wifi_connected() && muse_link_req_ready();
 }
 
 void muse_hatch_turn_begin(void)
 {
+    if (!muse_hatch_initialized()) return;
     end_turn();
     xQueueReset(s_events);
     memset(&s_turn, 0, sizeof(s_turn));
@@ -905,6 +906,7 @@ void muse_hatch_turn_begin(void)
 
 void muse_hatch_turn_audio(const int16_t *pcm, size_t frames)
 {
+    if (!muse_hatch_initialized()) return;
     const uint8_t *p = (const uint8_t *)pcm;
     size_t n = frames * 2;
     while (s_turn.phase == T_TALKING && n) {
@@ -919,10 +921,11 @@ void muse_hatch_turn_audio(const int16_t *pcm, size_t frames)
     }
 }
 
-bool muse_hatch_turn_recording(void) { return s_turn.phase == T_TALKING; }
+bool muse_hatch_turn_recording(void) { return muse_hatch_initialized() && s_turn.phase == T_TALKING; }
 
 void muse_hatch_turn_end(void)
 {
+    if (!muse_hatch_initialized()) return;
     if (s_turn.phase != T_TALKING) {
         /* Failed while recording: that error went to the recording caption. */
         emit(MUSE_HATCH_EV_ERROR, s_turn.error[0] ? s_turn.error : "CAN'T REACH MUSE");
@@ -949,12 +952,14 @@ void muse_hatch_turn_end(void)
 
 void muse_hatch_turn_cancel(void)
 {
+    if (!muse_hatch_initialized()) return;
     end_turn();
     xQueueReset(s_events);
 }
 
 muse_hatch_ev_t muse_hatch_turn_event(char *text, size_t cap)
 {
+    if (!muse_hatch_initialized()) return MUSE_HATCH_EV_NONE;
     pump();
     ev_t ev;
     if (xQueueReceive(s_events, &ev, 0) != pdTRUE) {
@@ -966,7 +971,7 @@ muse_hatch_ev_t muse_hatch_turn_event(char *text, size_t cap)
 
 bool muse_hatch_turn_reply(char *out, size_t cap)
 {
-    if (!cap || !s_turn.replied) return false;
+    if (!muse_hatch_initialized() || !cap || !s_turn.replied) return false;
     strlcpy(out, s_turn.text, cap);
     size_t n = strlen(out);
     if (strlen(s_turn.text) >= cap) {
@@ -979,6 +984,7 @@ bool muse_hatch_turn_reply(char *out, size_t cap)
 bool muse_hatch_turn_caption(size_t played, char *out, size_t cap)
 {
     (void)played;   /* no speech: the reply's page follows the reading pace */
+    if (!muse_hatch_initialized()) return false;
     size_t len = strlen(s_turn.text);
     if (s_turn.phase != T_REPLY || !s_turn.replied || !len) {
         return false;

@@ -26,6 +26,8 @@
 
 #include "esp_log.h"
 #include "esp_err.h"
+#include "esp_heap_caps.h"
+#include "esp_system.h"
 #include "esp_bt.h"
 #include "esp_app_desc.h"
 #include "mbedtls/platform_util.h"
@@ -141,6 +143,12 @@ typedef struct {
     uint32_t session_generation;
 } provision_args_t;
 
+// Each GATT RX callback owns its own pending work. Nothing points into its
+// incoming packet or either parsed JSON document once provisioning is staged.
+typedef struct {
+    provision_args_t *provision;
+} rx_dispatch_t;
+
 static char *dup_str(const char *s) {
     if (!s) return NULL;
     size_t n = strlen(s);
@@ -169,6 +177,33 @@ static void delete_command_json(cJSON *root, bool decrypted) {
     cJSON_Delete(root);
 }
 
+static void free_provision_args(provision_args_t *a) {
+    if (!a) return;
+    secure_free_str(a->ssid);
+    secure_free_str(a->password);
+    secure_free_str(a->access_token);
+    secure_free_str(a->refresh_token);
+    secure_free_str(a->username);
+    secure_free_str(a->ota_url);
+    secure_free_str(a->api_url);
+    secure_free_str(a->api_url_v2);
+    secure_free_str(a->noise_host);
+    free(a);
+}
+
+static void reject_provision(provision_args_t *a) {
+    uint32_t generation = a->session_generation;
+    free_provision_args(a);
+    ble_server_send_pairing_status("error_operation_in_progress", generation);
+    ble_server_disconnect_pairing_session(generation);
+}
+
+static bool copy_optional_string(const cJSON *item, char **out) {
+    if (!cJSON_IsString(item) || !item->valuestring || !*item->valuestring) return true;
+    *out = dup_str(item->valuestring);
+    return *out != NULL;
+}
+
 static void provision_task(void *arg) {
     provision_args_t *a = (provision_args_t *)arg;
     if (!s_shutting_down && s_cb.on_provision
@@ -185,18 +220,21 @@ static void provision_task(void *arg) {
                           a->noise_host ? a->noise_host : "",
                           a->session_generation);
     }
-    secure_free_str(a->ssid);
-    secure_free_str(a->password);
-    secure_free_str(a->access_token);
-    secure_free_str(a->refresh_token);
-    secure_free_str(a->username);
-    secure_free_str(a->ota_url);
-    secure_free_str(a->api_url);
-    secure_free_str(a->api_url_v2);
-    secure_free_str(a->noise_host);
-    free(a);
+    free_provision_args(a);
     stack_monitor_record(NULL);
     finish_dispatch_task();
+}
+
+static void flush_provision(rx_dispatch_t *dispatch) {
+    provision_args_t *a = dispatch->provision;
+    dispatch->provision = NULL;
+    if (!a) return;
+    // Passport's callback only persists configuration. Cloud/TLS runs later
+    // on its separate worker; do not reserve an 8 KiB TLS stack here.
+    if (s_shutting_down || !link_pairing_provisioning_session_valid(a->session_generation)
+        || create_dispatch_task(provision_task, "prov", 4096, a, 5, NULL) != pdPASS) {
+        reject_provision(a);
+    }
 }
 
 static void scan_task(void *arg) {
@@ -322,7 +360,8 @@ static bool command_json_depth_valid(const uint8_t *data, size_t len) {
     return true;
 }
 
-static void dispatch_command_ex(const uint8_t *data, size_t len, bool decrypted) {
+static void dispatch_command_ex(const uint8_t *data, size_t len, bool decrypted,
+                                rx_dispatch_t *dispatch) {
     if (!command_json_depth_valid(data, len)) {
         ble_server_send_status("error_invalid_command");
         return;
@@ -358,7 +397,11 @@ static void dispatch_command_ex(const uint8_t *data, size_t len, bool decrypted)
             ble_server_send_status(err);
             ble_server_delayed_disconnect(300);
         } else if (plain) {
-            dispatch_command_ex((const uint8_t *)plain, strlen(plain), true);
+            // The authenticated plaintext no longer borrows the envelope.
+            // Free its ciphertext strings before parsing/copying credentials.
+            delete_command_json(root, false);
+            root = NULL;
+            dispatch_command_ex((const uint8_t *)plain, strlen(plain), true, dispatch);
             mbedtls_platform_zeroize(plain, strlen(plain));
             free(plain);
         }
@@ -441,61 +484,33 @@ static void dispatch_command_ex(const uint8_t *data, size_t len, bool decrypted)
                 delete_command_json(root, decrypted);
                 return;
             }
-            a->ssid = dup_str(s->valuestring);
-            a->password = dup_str(p->valuestring);
-            a->access_token = dup_str(at->valuestring);
-            if (cJSON_IsString(rt) && rt->valuestring) {
-                a->refresh_token = dup_str(rt->valuestring);
-            }
-            if (cJSON_IsString(u) && u->valuestring) {
-                a->username = dup_str(u->valuestring);
-            }
-            if (*ota_url) {
-                a->ota_url = dup_str(ota_url);
-                a->ota_force = optional_ota_force(root);
-                if (!a->ota_url) {
-                    secure_free_str(a->ssid);
-                    secure_free_str(a->password);
-                    secure_free_str(a->access_token);
-                    secure_free_str(a->refresh_token);
-                    secure_free_str(a->username);
-                    free(a);
-                    ble_server_send_status("error_operation_in_progress");
-                    delete_command_json(root, decrypted);
-                    return;
-                }
-            }
             cJSON *au = cJSON_GetObjectItem(root, "api_url");
-            if (cJSON_IsString(au) && au->valuestring && *au->valuestring) {
-                a->api_url = dup_str(au->valuestring);
-            }
-            // Older firmware ignores api_url_v2 and keeps reading api_url.
             cJSON *au2 = cJSON_GetObjectItem(root, "api_url_v2");
-            if (cJSON_IsString(au2) && au2->valuestring && *au2->valuestring) {
-                a->api_url_v2 = dup_str(au2->valuestring);
-            }
             cJSON *nh = cJSON_GetObjectItem(root, "noise_host");
-            if (cJSON_IsString(nh) && nh->valuestring && *nh->valuestring) {
-                a->noise_host = dup_str(nh->valuestring);
-            }
-            // 8 KB stack — mbedtls 3.6 (IDF v6) needs significantly more
-            // stack during TLS handshake than v5's 3.x (~2 KB more peak).
-            a->session_generation = link_pairing_mark_provisioning_active();
-            if (a->session_generation == 0
-                || create_dispatch_task(provision_task, "prov", 8192, a, 5, NULL) != pdPASS) {
-                uint32_t generation = a->session_generation;
-                secure_free_str(a->ssid);
-                secure_free_str(a->password);
-                secure_free_str(a->access_token);
-                secure_free_str(a->refresh_token);
-                secure_free_str(a->username);
-                secure_free_str(a->ota_url);
-                secure_free_str(a->api_url);
-                secure_free_str(a->api_url_v2);
-                secure_free_str(a->noise_host);
-                free(a);
-                ble_server_send_pairing_status("error_operation_in_progress", generation);
-                ble_server_disconnect_pairing_session(generation);
+            a->ota_force = optional_ota_force(root);
+            bool copied = (a->ssid = dup_str(s->valuestring))
+                       && (a->password = dup_str(p->valuestring))
+                       && (a->access_token = dup_str(at->valuestring))
+                       && (a->refresh_token = dup_str(rt->valuestring))
+                       && copy_optional_string(u, &a->username)
+                       && copy_optional_string(au, &a->api_url)
+                       && copy_optional_string(au2, &a->api_url_v2)
+                       && copy_optional_string(nh, &a->noise_host);
+            if (copied && *ota_url) copied = (a->ota_url = dup_str(ota_url)) != NULL;
+            if (!copied) {
+                free_provision_args(a);
+                ble_server_send_status("error_operation_in_progress");
+            } else {
+                // All strings now have independent ownership. Release the
+                // parsed plaintext before staging the configuration task.
+                delete_command_json(root, true);
+                root = NULL;
+                a->session_generation = link_pairing_mark_provisioning_active();
+                if (!dispatch || dispatch->provision || !a->session_generation) {
+                    reject_provision(a);
+                } else {
+                    dispatch->provision = a;
+                }
             }
         }
     } else if (strcmp(act, "get_device_info") == 0) {
@@ -516,8 +531,8 @@ static void dispatch_command_ex(const uint8_t *data, size_t len, bool decrypted)
     delete_command_json(root, decrypted);
 }
 
-static void dispatch_command(const uint8_t *data, size_t len) {
-    dispatch_command_ex(data, len, false);
+static void dispatch_command(const uint8_t *data, size_t len, rx_dispatch_t *dispatch) {
+    dispatch_command_ex(data, len, false, dispatch);
 }
 
 // ---- RX reassembly ---------------------------------------------------------
@@ -549,20 +564,40 @@ static void handle_rx_write_locked(const uint8_t *data, size_t len,
         size_t flen = len - CHUNK_HEADER_BYTES;
         ESP_LOGI(TAG, "RX chunk %d/%d (%d bytes)", idx + 1, total, (int)flen);
 
-        if (total == 0) { rx_reset_locked(); return; }
+        if (total == 0 || idx >= total) { rx_reset_locked(); return; }
 
-        if (idx == 0 || s_rx_total != total) {
+        if (idx == 0) {
             rx_reset_locked();
             s_rx_total = total;
-            s_rx_cap = MAX_RX_TOTAL_BYTES;
-            s_rx_buf = malloc(s_rx_cap);
-            if (!s_rx_buf) { rx_reset_locked(); return; }
-            s_rx_len = 0;
         }
 
-        if (idx != s_rx_next_idx || idx >= s_rx_total) { rx_reset_locked(); return; }
+        if (total != s_rx_total || idx != s_rx_next_idx) { rx_reset_locked(); return; }
 
-        if (s_rx_len + flen > s_rx_cap) { rx_reset_locked(); return; }
+        if (flen > MAX_RX_TOTAL_BYTES - s_rx_len) {
+            ESP_LOGW(TAG, "RX message exceeds %u-byte limit", (unsigned)MAX_RX_TOTAL_BYTES);
+            rx_reset_locked();
+            return;
+        }
+        size_t needed = s_rx_len + flen;
+        if (!s_rx_buf || needed > s_rx_cap) {
+            // Most senders use equally sized fragments except the final one.
+            // A 12 x 250-byte transfer needs 3000 bytes, not an 8192-byte block.
+            // Grow if later fragments differ; retain the original hard limit.
+            size_t capacity = idx == 0 ? (size_t)total * flen : needed;
+            if (capacity < needed) capacity = needed;
+            if (capacity == 0) capacity = 1;
+            if (capacity > MAX_RX_TOTAL_BYTES) capacity = MAX_RX_TOTAL_BYTES;
+            uint8_t *buffer = realloc(s_rx_buf, capacity);
+            if (!buffer) {
+                ESP_LOGE(TAG, "RX allocation failed: bytes=%u heap=%u largest=%u",
+                         (unsigned)capacity, (unsigned)esp_get_free_heap_size(),
+                         (unsigned)heap_caps_get_largest_free_block(MALLOC_CAP_8BIT));
+                rx_reset_locked();
+                return;
+            }
+            s_rx_buf = buffer;
+            s_rx_cap = capacity;
+        }
         memcpy(s_rx_buf + s_rx_len, frag, flen);
         s_rx_len += flen;
         s_rx_count++;
@@ -579,10 +614,10 @@ static void handle_rx_write_locked(const uint8_t *data, size_t len,
     }
 }
 
-static void handle_rx_write(const uint8_t *data, size_t len) {
+static void handle_rx_write(const uint8_t *data, size_t len, rx_dispatch_t *dispatch) {
     if (!s_rx_mutex) return;
     if (len < CHUNK_HEADER_BYTES || data[0] != CHUNK_MAGIC) {
-        dispatch_command(data, len);
+        dispatch_command(data, len, dispatch);
         return;
     }
     uint8_t *complete = NULL;
@@ -591,7 +626,7 @@ static void handle_rx_write(const uint8_t *data, size_t len) {
     handle_rx_write_locked(data, len, &complete, &complete_len);
     xSemaphoreGive(s_rx_mutex);
     if (complete) {
-        dispatch_command(complete, complete_len);
+        dispatch_command(complete, complete_len, dispatch);
         free(complete);
     }
 }
@@ -601,7 +636,7 @@ static void handle_rx_write(const uint8_t *data, size_t len) {
 static stack_monitor_t s_host_stack = STACK_MONITOR_INIT;
 
 static int rx_access(uint16_t conn_handle, uint16_t attr_handle,
-                     struct ble_gatt_access_ctxt *ctxt, void *arg) {
+                     struct ble_gatt_access_ctxt *ctxt, void *arg, rx_dispatch_t *dispatch) {
     if (s_shutting_down) return BLE_ATT_ERR_UNLIKELY;
     if (ctxt->op != BLE_GATT_ACCESS_OP_WRITE_CHR) return BLE_ATT_ERR_UNLIKELY;
     uint16_t total = OS_MBUF_PKTLEN(ctxt->om);
@@ -611,7 +646,7 @@ static int rx_access(uint16_t conn_handle, uint16_t attr_handle,
     uint16_t out_len = 0;
     int rc = ble_hs_mbuf_to_flat(ctxt->om, buf, total, &out_len);
     if (rc == 0 && out_len > 0) {
-        handle_rx_write(buf, out_len);
+        handle_rx_write(buf, out_len, dispatch);
     }
     free(buf);
     return 0;
@@ -619,7 +654,11 @@ static int rx_access(uint16_t conn_handle, uint16_t attr_handle,
 
 static int rx_access_cb(uint16_t conn_handle, uint16_t attr_handle,
                         struct ble_gatt_access_ctxt *ctxt, void *arg) {
-    int rc = rx_access(conn_handle, attr_handle, ctxt, arg);
+    rx_dispatch_t dispatch = {0};
+    int rc = rx_access(conn_handle, attr_handle, ctxt, arg, &dispatch);
+    // rx_access has now freed the flat packet, reassembly buffer and decrypted
+    // plaintext. Only independently owned credentials overlap the task stack.
+    flush_provision(&dispatch);
     stack_monitor_record(&s_host_stack);
     return rc;
 }

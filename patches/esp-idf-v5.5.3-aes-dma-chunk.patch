@@ -1,0 +1,9 @@
+--- a/components/mbedtls/port/aes/dma/esp_aes_dma_core.c
++++ b/components/mbedtls/port/aes/dma/esp_aes_dma_core.c
+@@ -52,5 +52,5 @@
+ /* As P4 has larger memory than other targets, thus we can support a larger chunk write size */
+ #define AES_MAX_CHUNK_WRITE_SIZE 8*1024
+ #else
+-#define AES_MAX_CHUNK_WRITE_SIZE 1600
++#define AES_MAX_CHUNK_WRITE_SIZE 512
+ #endif

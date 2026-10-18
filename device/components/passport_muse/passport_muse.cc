@@ -210,6 +210,10 @@ void unpair() {
     view(PASSPORT_MUSE_ERROR, "已解除配对，重新进入可配对");
 }
 void setup_ble() {
+    // Pairing does not use the chat parser. Release it before NimBLE and
+    // provisioning compete for C3's contiguous heap.
+    muse_hatch_stop();
+    s_initialized = false;
     const ble_callbacks_t callbacks = {
         .on_provision = provision, .on_wifi_scan = scan, .on_ota = nullptr,
         .on_unpair = unpair, .on_get_device_info = device_info,
@@ -269,6 +273,17 @@ bool connect_account(bool refresh_first) {
     }
     view(PASSPORT_MUSE_CONNECTING, "正在连接你的 Muse");
     if (!muse_wifi_connected()) { view(PASSPORT_MUSE_ERROR, "Wi-Fi 已断开，请先连接网络"); return false; }
+    // Pairing does not use the chat parser. Allocate it only after the BLE
+    // shutdown check above, including retries after a failed allocation.
+    if (!s_initialized) {
+        muse_hatch_start();
+        s_initialized = noise_ctrl_initialized() && muse_hatch_initialized();
+        if (!s_initialized) {
+            muse_hatch_stop();
+            view(PASSPORT_MUSE_ERROR, "内存不足，请返回重试");
+            return false;
+        }
+    }
     char endpoint[256], host[128];
     config_get_str("api_url_v2", endpoint, sizeof(endpoint));
     config_get_str("noise_host", host, sizeof(host));
@@ -518,11 +533,10 @@ extern "C" esp_err_t passport_muse_start(void) {
         noise_ctrl_init(s_node, "Passport OS", status);
         noise_ctrl_set_agent_name_cb(agent_name); noise_ctrl_set_command_cb(command);
     }
-    // Muse's large bounded parser buffers belong to this app session instead
-    // of permanently shrinking the heap available to Radio and Xiaozhi.
-    muse_hatch_start();
-    s_initialized = noise_ctrl_initialized() && muse_hatch_initialized();
-    if (!s_initialized) { view(PASSPORT_MUSE_ERROR, "内存不足，请返回重试"); return ESP_ERR_NO_MEM; }
+    // Keep the large chat parser out of the first-time pairing heap. The
+    // cloud connection initializes it after NimBLE has released its memory.
+    s_initialized = false;
+    if (!noise_ctrl_initialized()) { view(PASSPORT_MUSE_ERROR, "内存不足，请返回重试"); return ESP_ERR_NO_MEM; }
     TaskHandle_t task = nullptr;
     view(PASSPORT_MUSE_CONNECTING, "正在准备连接");
     s_worker_running = true;

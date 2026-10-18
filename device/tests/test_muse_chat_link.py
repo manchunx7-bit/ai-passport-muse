@@ -306,8 +306,29 @@ static void text_modality(void) {
     assert(!strcmp(cJSON_GetStringValue(cJSON_GetObjectItem(text,"output_modality")),"text"));
     cJSON_Delete(text);
 }
+static void uninitialized(void) {
+    assert(!muse_hatch_initialized() && !muse_hatch_ready());
+    int before=allocation_attempts;
+    int16_t pcm[2]={0}; char text[32]="unchanged";
+    muse_hatch_turn_begin(); muse_hatch_turn_audio(pcm,2);
+    assert(!muse_hatch_turn_recording());
+    muse_hatch_turn_end(); muse_hatch_turn_cancel();
+    assert(muse_hatch_turn_event(text,sizeof(text))==MUSE_HATCH_EV_NONE);
+    assert(!muse_hatch_turn_reply(text,sizeof(text)));
+    assert(!muse_hatch_turn_caption(0,text,sizeof(text)));
+    assert(!strcmp(text,"unchanged") && allocation_attempts==before);
+}
 int main(int argc,char **argv) {
-    assert(argc==2); muse_hatch_start();
+    assert(argc==2);
+    if(atoi(argv[1])==11) {
+        uninitialized();
+        muse_hatch_start(); assert(muse_hatch_initialized());
+        muse_hatch_stop(); uninitialized();
+        muse_hatch_start(); begin();
+        muse_hatch_stop(); uninitialized();
+        return 0;
+    }
+    muse_hatch_start();
     switch(atoi(argv[1])) {
     case 0: streaming(); break;
     case 1: correlation(); break;
@@ -331,7 +352,7 @@ int main(int argc,char **argv) {
         cls.binary = c.with_suffix('')
         cjson = Path(os.environ.get('IDF_PATH', '/opt/esp-idf')) / 'components/json/cJSON'
         compiled = subprocess.run([
-            os.environ.get('CC', 'cc'), '-std=gnu11', '-Wall', '-Wextra', '-Werror',
+            os.environ.get('CC', 'cc'), '-std=gnu11', '-Wall', '-Wextra', '-Werror', '-Wno-deprecated-declarations',
             '-I', str(cjson), '-I', str(ROOT / 'tests/muse_mocks'), '-I', str(ROOT / 'components/passport_muse/sdk'),
             '-fsanitize=address,undefined', str(c), str(ROOT / 'components/passport_muse/voice_helpers.c'), str(cjson / 'cJSON.c'), '-o', str(cls.binary)
         ], capture_output=True, text=True)
@@ -347,6 +368,9 @@ int main(int argc,char **argv) {
 
     def test_delayed_final_after_minutes_and_assistant_parent_chain(self):
         self.run_case(8)
+
+    def test_calls_before_start_and_after_stop_do_not_touch_released_parser(self):
+        self.run_case(11)
 
     def test_reconnect_preserves_ids_and_cancel_drops_stale_frames(self):
         self.run_case(9)

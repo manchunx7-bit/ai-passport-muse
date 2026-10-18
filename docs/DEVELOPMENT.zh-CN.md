@@ -28,7 +28,9 @@ git -C .deps/idf/components/json/cJSON checkout c859b25da02955fef659d658b8f324b5
 IDF_PATH="$PWD/.deps/idf" bash tools/test-host.sh
 ```
 
-脚本编译真实聊天实现及音频辅助函数，运行 11 项会话场景和 WAV/base64/UTF-8 边界测试，不连接账号、不发送录音。`test_muse_inplace.cpp` 是保留的可选加密测试，需要额外 mbedTLS/PSA 构建环境，不属于默认 host 脚本已验收范围。
+脚本编译真实聊天实现及音频辅助函数，运行聊天会话、配对内存故障注入和 WAV/base64/UTF-8 边界测试，不连接账号、不发送录音。`test_muse_inplace.cpp` 是保留的可选加密测试，需要额外 mbedTLS/PSA 构建环境，不属于默认 host 脚本已验收范围。
+
+ESP32-C3 首次配对的内存预算与配套 SDK 补丁见 [配对内存修复](PAIRING_MEMORY.zh-CN.md)。
 
 ## 接入自己的宿主固件
 

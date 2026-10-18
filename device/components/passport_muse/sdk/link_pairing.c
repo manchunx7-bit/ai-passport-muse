@@ -289,30 +289,40 @@ static bool base64url_encode(const uint8_t *data, size_t len, char *out, size_t 
     return true;
 }
 
+static int base64url_digit(unsigned char c) {
+    if (c >= 'A' && c <= 'Z') return c - 'A';
+    if (c >= 'a' && c <= 'z') return c - 'a' + 26;
+    if (c >= '0' && c <= '9') return c - '0' + 52;
+    if (c == '-') return 62;
+    if (c == '_') return 63;
+    return -1;
+}
+
 static bool base64url_decode(const char *in, uint8_t *out, size_t out_cap, size_t *out_len) {
     if (!in || !out || !out_len) return false;
     size_t n = strlen(in);
     if (n == 0 || n > 4096 || (n % 4) == 1) return false;
-    size_t padded = n + ((4 - (n % 4)) % 4);
-    char *tmp = malloc(padded + 1);
-    if (!tmp) return false;
+    size_t olen = n * 3 / 4;
+    if (olen > out_cap) return false;
+    // Validate everything before writing. The wire format remains unpadded
+    // Base64url: '=', '+', '/', whitespace and non-ASCII bytes are rejected.
     for (size_t i = 0; i < n; i++) {
-        unsigned char c = (unsigned char)in[i];
-        if (c == '-') c = '+';
-        else if (c == '_') c = '/';
-        else if (!isalnum(c)) {
-            free(tmp);
-            return false;
-        }
-        tmp[i] = (char)c;
+        if (base64url_digit((unsigned char)in[i]) < 0) return false;
     }
-    for (size_t i = n; i < padded; i++) tmp[i] = '=';
-    tmp[padded] = '\0';
-    size_t olen = 0;
-    int rc = mbedtls_base64_decode(out, out_cap, &olen, (const uint8_t *)tmp, padded);
-    free(tmp);
-    if (rc != 0) return false;
-    *out_len = olen;
+    // Keep only the most recent bits; unsigned overflow discards old groups.
+    // This avoids a second, padded copy of a multi-kilobyte ciphertext string.
+    uint32_t bits = 0;
+    unsigned available = 0;
+    size_t written = 0;
+    for (size_t i = 0; i < n; i++) {
+        bits = (bits << 6) | (unsigned)base64url_digit((unsigned char)in[i]);
+        available += 6;
+        if (available >= 8) {
+            available -= 8;
+            out[written++] = (uint8_t)(bits >> available);
+        }
+    }
+    *out_len = written;
     return true;
 }
 
