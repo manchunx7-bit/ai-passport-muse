@@ -15,4 +15,5 @@ jobs:
           ref: c859b25da02955fef659d658b8f324b5cde87be3
           path: .ci-idf/components/json/cJSON
       - run: python3 tools/check_scope.py
+      - run: python3 -m unittest discover -s tools/tests -p "test_*.py" -v
       - run: bash tools/test-host.sh

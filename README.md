@@ -8,7 +8,22 @@
 
 官网维护者尚未上传含 Muse 的版本时，请等待页面更新。GitHub 发布项目不代表官网固件已经更新，Source code ZIP 不能刷机。
 
-## 普通用户：从安装到第一次回复
+## 让 AI 帮你配置
+
+在本机 Codex、Claude Code、WorkBuddy 等能访问文件与终端的 Agent 中打开完整项目目录，复制：
+
+```text
+请帮我配置 AI Passport Muse。先读 AGENTS.md 和 docs/AGENT_SETUP.zh-CN.md，
+检查设备已有功能与我的网络；已有 Muse 就跳过刷机，优先直连，需要时检查已有代理。
+Token 由我在本地设备设置页填写，不让我贴到聊天。引导我完成手机配对和硬件确认，
+等待“我准备好了”，再由我亲自说话，验证两次文字回复和退出重进。
+记录不含凭据的本地进度，中断后复检继续；分别报告自动检查、用户确认与待验证项目。
+不要自动录音发送，也不要因普通网络失败清除配对。
+```
+
+**[完整 Agent 配置手册](docs/AGENT_SETUP.zh-CN.md)** 包含网络诊断、每一步的完成标志、重启续接和日常使用。Agent 可检查电脑；账号申请、Token 填写、手机配对和实体按键仍需你参与。设备可直连时，不需要常驻电脑程序。
+
+## 手动配置：从安装到第一次回复
 
 1. 同款 FoloToy AI Passport（ESP32-C3 / 8 MB / ES8311）先按 [固件说明](docs/FIRMWARE.zh-CN.md) 安装官网固件。已有同版 Muse 则跳过。
 2. 在 [Muse Gadget 官方网站](https://gadgets.muse.ai/) 申请自己的 SDK Token，并准备已登录的手机 Muse。账号资格以官方为准。
@@ -36,7 +51,7 @@
 | `device/components/passport_muse/` | Muse 生命周期、音频发送、配对、网络代理及 SDK 适配 |
 | `device/components/noise_core/` | 本功能所需的上游 Noise 协议代码，保留 Apache-2.0 声明 |
 | `device/tests/` | Muse 语音与会话协议测试 |
-| `tools/` | 只针对本功能的测试和角色生成工具 |
+| `tools/` | 本地网络诊断、测试和角色生成工具 |
 
 没有首页/名片、收音机、小智、其他语音应用、游戏、秒表、整机入口、设置页和 BSP 实现，也没有旧整机 Git 历史。
 
@@ -44,7 +59,7 @@
 
 - [完整使用教程](docs/QUICKSTART.zh-CN.md)
 - [网络排错](docs/NETWORK.zh-CN.md)
-- [用本地 Codex 辅助配置](docs/CODEX_SETUP.zh-CN.md)
+- [Agent 自动检查与配置：Codex / Claude Code / WorkBuddy](docs/AGENT_SETUP.zh-CN.md)
 - [测试与验证边界](docs/VALIDATION.md)
 - [来源与许可证](THIRD_PARTY_NOTICES.md)
 

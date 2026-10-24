@@ -4,6 +4,7 @@
   "files": [
     ".github/workflows/checks.yml",
     ".gitignore",
+    "AGENTS.md",
     "CHANGELOG.md",
     "LICENSE",
     "README.md",
@@ -79,6 +80,7 @@
     "device/tests/test_muse_chat_link.py",
     "device/tests/test_muse_inplace.cpp",
     "device/tests/test_muse_voice.c",
+    "docs/AGENT_SETUP.zh-CN.md",
     "docs/CODEX_SETUP.zh-CN.md",
     "docs/DEVELOPMENT.zh-CN.md",
     "docs/FIRMWARE.zh-CN.md",
@@ -87,6 +89,8 @@
     "docs/VALIDATION.md",
     "tools/check_scope.py",
     "tools/generate_avatar.py",
-    "tools/test-host.sh"
+    "tools/setup_doctor.py",
+    "tools/test-host.sh",
+    "tools/tests/test_setup_doctor.py"
   ]
 }

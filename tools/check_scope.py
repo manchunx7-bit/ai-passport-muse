@@ -1,4 +1,4 @@
-"""Fail closed if a tracked file exceeds this application's reviewed allowlist."""
+"""Check tracked and non-ignored new files against the reviewed allowlist."""
 from pathlib import Path
 import json
 import re
@@ -6,7 +6,7 @@ import subprocess
 
 ROOT = Path(__file__).resolve().parents[1]
 scope = json.loads((ROOT / 'PUBLIC_FILES.json').read_text(encoding='utf-8'))
-files = set(filter(None, subprocess.check_output(['git', '-C', str(ROOT), 'ls-files', '-z']).decode().split('\0')))
+files = set(filter(None, subprocess.check_output(['git', '-C', str(ROOT), 'ls-files', '--cached', '--others', '--exclude-standard', '-z']).decode().split('\0')))
 assert files == set(scope['files']) | {'PUBLIC_FILES.json'}, 'Update/review the explicit public file allowlist'
 app = scope['application']
 allowed_device = ('device/main/apps/voice/', 'device/tests/') if app == 'voice' else (

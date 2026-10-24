@@ -14,3 +14,4 @@ __pycache__/
 **/build/
 **/managed_components/
 .env*
+.setup/
